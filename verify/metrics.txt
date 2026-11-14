@@ -1,0 +1,5 @@
+flower.svg (Chrome): PSNR 11.59 dB  SSIM 0.672  轮廓IoU 0.499  平均ΔE 13.4
+WebGL 2 (SwiftShader): PSNR 13.94 dB  SSIM 0.693  轮廓IoU 0.748  平均ΔE 25.1
+WebGPU (SwiftShader): PSNR 13.94 dB  SSIM 0.693  轮廓IoU 0.748  平均ΔE 25.1
+WebGL vs WebGPU: 平均像素差 0.20/255, 差>30 的像素占 0.18%
+运行状态: WebGL=WebGL2 / GLSL ES 3.00 | WebGPU=WebGPU / WGSL | 背景=white

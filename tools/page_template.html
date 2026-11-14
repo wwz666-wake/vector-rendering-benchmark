@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>花朵图像：AI 生成视频 vs 矢量化 WebGL / WebGPU 渲染</title>
+  <style>__CSS__</style>
+  <script>__CONFIG__</script>
+  <script defer>__APP_JS__</script>
+  <script defer>__PROBE_JS__</script>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">GPU VECTORIZATION LAB · 2026</p>
+        <h1>从一张花朵图片，到两种完全不同的动态表达</h1>
+        <p class="lede">
+          左侧是 AI 基于原图生成的 5 秒栅格短片；右侧是主实验：从像素中分割花色、提取轮廓、
+          简化为矢量控制点，再把同一份几何数据分别交给 <strong>WebGL2</strong> 与 <strong>WebGPU</strong> 实时渲染。
+        </p>
+        <div class="badge-row">
+          <span class="badge accent">主实验：矢量化重构</span>
+          <span class="badge">WebGL2 / GLSL</span>
+          <span class="badge">WebGPU / WGSL</span>
+          <span class="badge">同一顶点缓冲</span>
+          <span class="badge">可导出 SVG / JSON</span>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-card-head">
+          <span class="dot"></span>
+          <span id="statusLine">正在初始化实验…</span>
+        </div>
+        <div class="hero-metric-grid">
+          <div><span>原图</span><strong id="sourceSize">—</strong></div>
+          <div><span>AI 视频</span><strong id="videoSize">—</strong></div>
+          <div><span>视频时长</span><strong id="videoDuration">—</strong></div>
+          <div><span>提取耗时</span><strong id="statExtractMs">—</strong></div>
+        </div>
+        <p class="tiny">WebGPU 需要 Chrome / Edge 等支持 WebGPU 的浏览器，并通过 <code>localhost</code> 或 HTTPS 打开。</p>
+      </div>
+    </header>
+
+    <section class="section" id="subjects">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 / 实验对象</p>
+          <h2>同一张图，三种形态</h2>
+        </div>
+        <p class="section-note">原图是共同输入；AI 视频是生成式结果；SVG 是可编辑的矢量近似。</p>
+      </div>
+      <div class="subject-grid">
+        <article class="card media-card">
+          <div class="card-title"><span class="index">A</span><h3>输入原图</h3><span class="tag">1280 × 1280 JPEG</span></div>
+          <div class="media-frame light"><img id="sourceImg" alt="橙色五瓣花朵原图"></div>
+          <p class="card-text">橙红渐变花瓣、黄色花心、白色描边与三根花蕊，是本次轮廓提取和配色重建的依据。</p>
+        </article>
+        <article class="card media-card">
+          <div class="card-title"><span class="index">B</span><h3>AI 生成短片</h3><span class="tag">图生视频 · 5 s</span></div>
+          <div class="media-frame light">
+            <video id="aiVideo" src="assets/ai-flower.mp4" poster="__SOURCE__" muted loop playsinline autoplay controls></video>
+          </div>
+          <p class="card-text">模型自由生成花瓣舒展、高光流动与缓慢推镜；视觉更“像原图”，但几何不可编辑、分辨率固定。</p>
+        </article>
+        <article class="card media-card">
+          <div class="card-title"><span class="index">C</span><h3>矢量化 SVG</h3><span class="tag">路径 + 渐变 + 图元</span></div>
+          <div class="media-frame svg-frame" id="svgPreview" aria-label="矢量化 SVG 预览"></div>
+          <p class="card-text">由浏览器实时提取的轮廓控制点生成平滑贝塞尔路径，叠加花蕊、花瓣缝隙与程序化渐变。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="pipeline">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 / 主实验管线</p>
+          <h2>像素 → 轮廓 → 矢量路径 → GPU 几何</h2>
+        </div>
+        <p class="section-note">矢量化不是把 JPEG 贴进画布，而是重新描述形状。</p>
+      </div>
+      <div class="pipeline-layout">
+        <div class="card pipeline-card">
+          <div class="pipeline-steps">
+            <div class="step"><span>1</span><strong>降采样</strong><small>320 × 320 读取像素</small></div>
+            <div class="arrow">→</div>
+            <div class="step"><span>2</span><strong>颜色分割</strong><small>S &gt; 0.18，R−B &gt; 42</small></div>
+            <div class="arrow">→</div>
+            <div class="step"><span>3</span><strong>径向轮廓</strong><small>240 个角度取最外色点</small></div>
+            <div class="arrow">→</div>
+            <div class="step"><span>4</span><strong>RDP 简化</strong><small>保留关键凹口与瓣尖</small></div>
+            <div class="arrow">→</div>
+            <div class="step"><span>5</span><strong>样条细分</strong><small>Catmull-Rom → 网格</small></div>
+            <div class="arrow">→</div>
+            <div class="step accent-step"><span>6</span><strong>双 API 渲染</strong><small>同一 Float32 顶点数据</small></div>
+          </div>
+          <div class="pipeline-note">
+            <strong>方法说明：</strong>花朵对花心近似为星形域，因此采用「沿射线寻找最外侧花色像素」提取外轮廓；
+            白色描边、花瓣缝隙、花蕊与橙黄渐变被重建为独立矢量图元 / 着色器函数。它保留形状与配色逻辑，
+            但不追求逐像素复刻照片纹理。
+          </div>
+        </div>
+        <div class="card mask-card">
+          <div class="card-title compact"><h3>分割与轮廓叠加</h3><span class="tag live">实时提取</span></div>
+          <canvas id="maskCanvas" width="320" height="320" aria-label="颜色分割与矢量轮廓预览"></canvas>
+          <div class="legend">
+            <span><i class="swatch orange"></i>花色掩膜</span>
+            <span><i class="swatch cyan"></i>平滑轮廓</span>
+            <span><i class="swatch white"></i>RDP 控制点</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="render">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 / 实时双管线</p>
+          <h2>WebGL2 与 WebGPU 渲染同一份矢量几何</h2>
+        </div>
+        <p class="section-note">两个画布使用完全相同的三角形、线段、控制点与 uniform 动画参数。</p>
+      </div>
+
+      <div class="card control-bar">
+        <button id="playBtn" class="btn primary" type="button">暂停动画</button>
+        <label class="range-label">旋转速度
+          <input id="speed" type="range" min="0" max="2" step="0.1" value="1">
+          <output id="speedValue">1.0×</output>
+        </label>
+        <div class="toggle-group">
+          <label><input id="toggleOutline" type="checkbox" checked><span>白色描边</span></label>
+          <label><input id="toggleDetails" type="checkbox" checked><span>花蕊 / 缝隙</span></label>
+          <label><input id="toggleMesh" type="checkbox"><span>矢量网格</span></label>
+          <label><input id="togglePoints" type="checkbox"><span>控制点</span></label>
+        </div>
+        <div class="button-group">
+          <button id="downloadSvg" class="btn" type="button">下载 SVG</button>
+          <button id="downloadJson" class="btn" type="button">下载 JSON</button>
+          <button id="reextract" class="btn ghost" type="button">重新提取</button>
+        </div>
+      </div>
+
+      <div class="render-grid">
+        <article class="card render-card">
+          <div class="render-head">
+            <div><span class="api-pill gl">WebGL2</span><h3>GLSL ES 3.00 管线</h3></div>
+            <div class="fps"><strong id="glFps">—</strong><span>FPS</span></div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="glCanvas" aria-label="WebGL2 矢量化花朵渲染"></canvas>
+            <div class="canvas-corner">TRIANGLE LIST + LINE LIST</div>
+          </div>
+          <div class="render-meta">
+            <span>API <strong id="statWebglApi">检测中…</strong></span>
+            <span>三角形 <strong id="statWebglTris">—</strong></span>
+            <span>混合 <strong>SRC-ALPHA</strong></span>
+          </div>
+        </article>
+
+        <article class="card render-card">
+          <div class="render-head">
+            <div><span class="api-pill gpu">WebGPU</span><h3>WGSL 管线</h3></div>
+            <div class="fps"><strong id="gpuFps">—</strong><span>FPS</span></div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="gpuCanvas" aria-label="WebGPU 矢量化花朵渲染"></canvas>
+            <div class="canvas-corner">4× MSAA + RESOLVE</div>
+            <div id="gpuFallback" class="canvas-fallback" hidden></div>
+          </div>
+          <div class="render-meta">
+            <span>API <strong id="statWebgpuApi">检测中…</strong></span>
+            <span>三角形 <strong id="statWebgpuTris">—</strong></span>
+            <span>缓冲 <strong>UNIFORM / STORAGE-FREE</strong></span>
+          </div>
+        </article>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat"><span>轮廓采样点</span><strong id="statControlPoints">—</strong></div>
+        <div class="stat"><span>样条细分点</span><strong id="statDensePoints">—</strong></div>
+        <div class="stat"><span>三角形总数</span><strong id="statTriangles">—</strong></div>
+        <div class="stat"><span>SVG 路径字符</span><strong id="statSvgChars">—</strong></div>
+        <div class="stat"><span>矢量 JSON</span><strong id="statVectorBytes">—</strong></div>
+        <div class="stat"><span>识别凹口 / 花心</span><strong id="statNotches">—</strong></div>
+        <div class="stat"><span>花心坐标</span><strong id="statCenter">—</strong></div>
+        <div class="stat"><span>分割阈值</span><strong id="statThreshold">—</strong></div>
+        <div class="stat"><span>源 JPEG</span><strong id="statSourceBytes">—</strong></div>
+        <div class="stat"><span>AI MP4</span><strong id="statVideoBytes">—</strong></div>
+        <div class="stat"><span>视频时长</span><strong id="statVideoDuration">—</strong></div>
+      </div>
+    </section>
+
+    <section class="section" id="comparison">
+      <div class="section-head">
+        <div>
+          <p class="kicker">04 / 实验结论</p>
+          <h2>生成式栅格视频 vs 分析式矢量渲染</h2>
+        </div>
+        <p class="section-note">不是谁替代谁，而是两种完全不同的可控性 / 保真度取舍。</p>
+      </div>
+      <div class="card table-card">
+        <table>
+          <thead>
+            <tr><th>维度</th><th>AI 生成短片</th><th>矢量化 WebGL / WebGPU</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>输入与结果</td><td>原图作为首帧，模型生成新像素</td><td>从原图提取轮廓，重构路径与图元</td></tr>
+            <tr><td>数据体积</td><td><strong id="cmpAiSize">—</strong> MP4，固定 5 秒</td><td><strong id="cmpVectorSize">—</strong> JSON + 程序化着色器</td></tr>
+            <tr><td>分辨率</td><td>固定栅格分辨率，放大后受像素限制</td><td>几何由着色器光栅化，可任意缩放 / DPR 适配</td></tr>
+            <tr><td>可编辑性</td><td>基本不可编辑几何，只能重新生成</td><td>控制点、颜色函数、描边、花蕊、动画均可参数化</td></tr>
+            <tr><td>确定性</td><td>生成式结果含随机性，难以逐帧复现</td><td>同一输入 + 同一参数 = 确定性输出</td></tr>
+            <tr><td>GPU 角色</td><td>主要做视频解码与显示</td><td>顶点变换、渐变、光晕、轮廓与网格全部实时计算</td></tr>
+            <tr><td>跨 API</td><td>与渲染 API 基本无关</td><td>同一几何数据分别写入 WebGL 与 WebGPU 管线</td></tr>
+            <tr><td>优势</td><td>光影、材质和自然动态最接近原图质感</td><td>轻量、可交互、可缩放、可导出 SVG，适合 UI / 实时图形</td></tr>
+            <tr><td>代价</td><td>文件更大、不可控、可能引入形变或闪烁</td><td>丢失精细纹理，需手工重建花蕊 / 渐变 / 描边等语义</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="conclusion-grid">
+        <article class="card conclusion-card">
+          <h3>AI 视频适合「表现」</h3>
+          <p>保留玻璃质感、柔和阴影和自然高光，用最少人工得到一段有生命力的短片；代价是形状、镜头和逐帧像素由模型决定。</p>
+        </article>
+        <article class="card conclusion-card featured">
+          <h3>矢量 GPU 渲染适合「构造」</h3>
+          <p>本实验真正把花朵拆成可计算的轮廓、路径与图元：240 次径向采样、RDP 简化、Catmull-Rom 细分、扇形网格，再以 GLSL / WGSL 双管线绘制。形状、颜色和运动都成为可调参数。</p>
+        </article>
+        <article class="card conclusion-card">
+          <h3>可继续深入</h3>
+          <p>下一步可换成 Potrace 式多色区域追踪、SDF 轮廓抗锯齿、计算着色器粒子，或把 SVG 路径直接做 GPU 曲线细分。</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Flower Vectorization Experiment</span>
+      <span>源图：用户提供 · AI 视频：图生视频模型 · 矢量重建与双管线：本地浏览器实时执行</span>
+    </footer>
+  </main>
+</body>
+</html>

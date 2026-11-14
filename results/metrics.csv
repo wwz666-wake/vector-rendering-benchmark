@@ -1,0 +1,4 @@
+﻿renderer,backend,psnr_db,ssim,contour_iou,mean_delta_e
+flower.svg,Chrome,11.59,0.672,0.499,13.4
+WebGL 2,SwiftShader,13.94,0.693,0.748,25.1
+WebGPU,SwiftShader,13.94,0.693,0.748,25.1

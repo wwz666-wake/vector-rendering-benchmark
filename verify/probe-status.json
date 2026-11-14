@@ -1,0 +1,28 @@
+{
+  "dark": {
+    "webgl": "WebGL2 / GLSL ES 3.00",
+    "webgpu": "WebGPU / WGSL",
+    "statusLine": "已就绪：WebGL2 与 WebGPU 双管线实时运行中",
+    "background": "dark",
+    "fps": {
+      "gl": "—",
+      "gpu": "—"
+    },
+    "glCaptured": true,
+    "gpuCaptured": true,
+    "captureErrors": {}
+  },
+  "white": {
+    "webgl": "WebGL2 / GLSL ES 3.00",
+    "webgpu": "WebGPU / WGSL",
+    "statusLine": "已就绪：WebGL2 与 WebGPU 双管线实时运行中",
+    "background": "white",
+    "fps": {
+      "gl": "—",
+      "gpu": "—"
+    },
+    "glCaptured": true,
+    "gpuCaptured": true,
+    "captureErrors": {}
+  }
+}
